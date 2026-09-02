@@ -1,0 +1,15 @@
+{
+  "name": "am-sabari-vegetables-billing",
+  "version": "1.0.0",
+  "description": "Am.Sabari. VEGETABLES — billing & daily ledger app (frontend static site served by Express, data in Supabase)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
