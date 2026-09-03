@@ -344,6 +344,7 @@ function updatePrevBalanceDisplay() {
 }
 
 document.getElementById('addItemRowBtn').addEventListener('click', () => addBillRow());
+document.getElementById('billKooliInput').addEventListener('input', recalcBillTotals);
 
 function clearBillItemRows() {
   // Every item-row combo's dropdown lives in <body>, not inside the row
@@ -426,12 +427,14 @@ function recalcRow(tr) {
 }
 
 function recalcBillTotals() {
-  let total = 0;
+  let itemsTotal = 0;
   document.querySelectorAll('#billItemsBody tr').forEach(tr => {
     const qty = parseFloat(tr.querySelector('.row-qty').value) || 0;
     const price = parseFloat(tr.querySelector('.row-price').value) || 0;
-    total += qty * price;
+    itemsTotal += qty * price;
   });
+  const kooli = parseFloat(document.getElementById('billKooliInput').value) || 0;
+  const total = itemsTotal + kooli;
   const custId = document.getElementById('billCustomerSelect').value;
   const cust = findCustomer(custId);
   const prev = cust ? customerCurrentBalance(cust) : 0;
@@ -445,6 +448,7 @@ document.getElementById('clearBillBtn').addEventListener('click', () => {
   if (!confirm('இந்த பில்லை அழிக்கவா?')) return;
   clearBillItemRows();
   billCustomerCombo.setValue('', '');
+  document.getElementById('billKooliInput').value = '';
   addBillRow();
   updatePrevBalanceDisplay();
 });
@@ -478,9 +482,11 @@ async function saveBill() {
     return;
   }
 
-  const total = rows.reduce((s, r) => s + r.value, 0);
+  const kooli = round2(parseFloat(document.getElementById('billKooliInput').value) || 0);
+  const itemsSubtotal = round2(rows.reduce((s, r) => s + r.value, 0));
+  const total = round2(itemsSubtotal + kooli);  // today's total = goods + kooli
   const prevBalance = customerCurrentBalance(cust);
-  const grandTotal = total + prevBalance;
+  const grandTotal = round2(total + prevBalance);
   const now = new Date();
   const dateISO = todayISO();
   // Any payment already recorded for this customer earlier today (e.g. cash
@@ -500,6 +506,7 @@ async function saveBill() {
     customerName: cust.name,
     customerPhone: cust.phone || '',
     items: rows,
+    kooli,
     total,
     prevBalance,
     grandTotal,
@@ -518,6 +525,7 @@ async function saveBill() {
     // Reset form
     clearBillItemRows();
     billCustomerCombo.setValue('', '');
+    document.getElementById('billKooliInput').value = '';
     addBillRow();
     updatePrevBalanceDisplay();
     populateCustomerSelect();
@@ -1426,6 +1434,11 @@ function buildReceiptHTML(b) {
     </tr>
   `).join('');
 
+  const kooli = Number(b.kooli) || 0;
+  const kooliRow = kooli > 0
+    ? `<div class="totals-row kooli-receipt-row"><span>கூலி</span><strong>${plainMoney(kooli)}</strong></div>`
+    : '';
+
   return `
     <div class="receipt-letterhead">
       <img src="assets/logo.png" alt="${escapeHtml(shopFullName())}" class="receipt-logo-img">
@@ -1447,6 +1460,7 @@ function buildReceiptHTML(b) {
     </table>
     <div class="receipt-line"></div>
     <div class="receipt-totals">
+      ${kooliRow}
       <div class="totals-row today-amt">
         <span>இன்றைய தொகை</span><strong>${plainMoney(b.total)}</strong>
       </div>
