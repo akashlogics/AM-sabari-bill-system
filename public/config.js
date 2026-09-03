@@ -18,5 +18,5 @@
 const SUPABASE_CONFIG = {
   url: 'https://rxbosecuqngxcgqyzubd.supabase.co',
   anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4Ym9zZWN1cW5neGNncXl6dWJkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNTQxNDgsImV4cCI6MjEwMzkzMDE0OH0.e6sakKilEeLtS9w3GrxLrStTx1f2OP-epk7Wbj8QAVw',
-  loginEmail: 'sabribills123@gmail.com'
+  loginEmail: 'sabaribills123@gmail.com'
 };
