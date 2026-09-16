@@ -128,26 +128,41 @@ const DB = {
   },
 
   /* ---------- FETCH ALL (called once, right after login) ---------- */
+  async fetchAllPaginated(tableName, orderColumn = 'created_at_ms') {
+    let allData = [];
+    let page = 0;
+    const pageSize = 1000;
+    while (true) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const res = await supabaseClient.from(tableName).select('*').order(orderColumn).range(from, to);
+      throwIfError(res);
+      if (!res.data || res.data.length === 0) break;
+      allData.push(...res.data);
+      if (res.data.length < pageSize) break;
+      page++;
+    }
+    return allData;
+  },
+
   async fetchAll() {
-    const [shopRes, itemsRes, custRes, billsRes, payRes] = await Promise.all([
+    const [shopRes, itemsRes, custRes, billsData, payData] = await Promise.all([
       supabaseClient.from('shop_settings').select('*').eq('id', 1).maybeSingle(),
       supabaseClient.from('items').select('*').order('name'),
       supabaseClient.from('customers').select('*').order('name'),
-      supabaseClient.from('bills').select('*').order('created_at_ms'),
-      supabaseClient.from('payments').select('*').order('created_at_ms')
+      this.fetchAllPaginated('bills', 'created_at_ms'),
+      this.fetchAllPaginated('payments', 'created_at_ms')
     ]);
     throwIfError(shopRes);
     throwIfError(itemsRes);
     throwIfError(custRes);
-    throwIfError(billsRes);
-    throwIfError(payRes);
 
     return {
       shop: rowToShop(shopRes.data),
       items: itemsRes.data.map(rowToItem),
       customers: custRes.data.map(rowToCustomer),
-      bills: billsRes.data.map(rowToBill),
-      payments: payRes.data.map(rowToPayment)
+      bills: billsData.map(rowToBill),
+      payments: payData.map(rowToPayment)
     };
   },
 
@@ -185,7 +200,7 @@ const DB = {
 
   /* ---------- BILLS ---------- */
   async insertBill(bill) {
-    throwIfError(await supabaseClient.from('bills').insert(billToRow(bill)));
+    throwIfError(await supabaseClient.from('bills').upsert(billToRow(bill)));
   },
   async deleteBill(id) {
     throwIfError(await supabaseClient.from('bills').delete().eq('id', id));

@@ -168,6 +168,7 @@ function renderDashboard() {
       <td>${money(b.grandTotal)}</td>
       <td>
         <button class="btn btn-ghost view-bill-btn" data-id="${b.id}">காண்க</button>
+        <button class="btn btn-ghost edit-bill-btn" data-id="${b.id}" title="பில் திருத்து">✏️ திருத்து</button>
         <button class="btn btn-ghost btn-danger-text bill-del-btn" data-id="${b.id}" title="பில் நீக்கு">🗑</button>
       </td>
     `;
@@ -175,6 +176,9 @@ function renderDashboard() {
   });
   tbody.querySelectorAll('.view-bill-btn').forEach(btn => {
     btn.addEventListener('click', () => openPrintModal(bills.find(b => b.id === btn.dataset.id)));
+  });
+  tbody.querySelectorAll('.edit-bill-btn').forEach(btn => {
+    btn.addEventListener('click', () => editBillById(btn.dataset.id));
   });
   tbody.querySelectorAll('.bill-del-btn').forEach(btn => {
     btn.addEventListener('click', () => deleteBillById(btn.dataset.id, btn));
@@ -221,9 +225,22 @@ function escapeHtml(str) {
 /* ============================================================
    NEW BILL TAB
    ============================================================ */
+(function initBillDatePicker() {
+  const el = document.getElementById('billDate');
+  if (el && !el.value) el.value = todayISO();
+})();
+const billDateTodayBtn = document.getElementById('billDateTodayBtn');
+if (billDateTodayBtn) {
+  billDateTodayBtn.addEventListener('click', () => {
+    document.getElementById('billDate').value = todayISO();
+  });
+}
+
 function renderNewBillTab() {
   populateCustomerSelect();
   updatePrevBalanceDisplay();
+  const dateEl = document.getElementById('billDate');
+  if (dateEl && !dateEl.value) dateEl.value = todayISO();
   if (document.getElementById('billItemsBody').children.length === 0) {
     addBillRow();
   }
@@ -356,7 +373,7 @@ function clearBillItemRows() {
   document.getElementById('billItemsBody').innerHTML = '';
 }
 
-function addBillRow() {
+function addBillRow(itemData = null) {
   const tbody = document.getElementById('billItemsBody');
   const rowId = 'row' + (++billRowCounter);
   const tr = document.createElement('tr');
@@ -384,7 +401,7 @@ function addBillRow() {
 
   const itemComboListEl = tr.querySelector('.combo-list');
 
-  setupCombo({
+  const combo = setupCombo({
     root: tr.querySelector('.row-item-combo'),
     hiddenInput: tr.querySelector('.row-item-select'),
     searchInput: tr.querySelector('.row-item-search'),
@@ -406,12 +423,20 @@ function addBillRow() {
     emptyText: 'பொருள் யாரும் இல்லை'
   });
 
+  if (itemData) {
+    const matchedItem = items.find(i => i.name === itemData.name);
+    const itemId = matchedItem ? matchedItem.id : '';
+    combo.setValue(itemId, itemData.name);
+    unitSpan.textContent = itemData.unit || (matchedItem ? matchedItem.unit : '—');
+    unitSpan.classList.remove('muted');
+    qtyInput.value = itemData.qty;
+    priceInput.value = itemData.price;
+    recalcRow(tr);
+  }
+
   qtyInput.addEventListener('input', () => recalcRow(tr));
   priceInput.addEventListener('input', () => recalcRow(tr));
   tr.querySelector('.row-del-btn').addEventListener('click', () => {
-    // The combo's dropdown was moved out to <body> when it was set up
-    // (see setupCombo) so it can render above the table's scroll clipping —
-    // remove that orphaned node too, or it'd sit there invisibly forever.
     itemComboListEl.remove();
     tr.remove();
     recalcBillTotals();
@@ -444,13 +469,67 @@ function recalcBillTotals() {
   document.getElementById('billGrandTotal').textContent = money(total + prev);
 }
 
-document.getElementById('clearBillBtn').addEventListener('click', () => {
-  if (!confirm('இந்த பில்லை அழிக்கவா?')) return;
+let editingBillId = null;
+
+function editBillById(id) {
+  const b = bills.find(x => x.id === id);
+  if (!b) return;
+
+  editingBillId = b.id;
+
+  switchTab('newbill');
+
+  const titleEl = document.getElementById('newBillTitle');
+  if (titleEl) titleEl.textContent = `பில் திருத்து (பில் எண் #${b.billNo})`;
+
+  const saveBtn = document.getElementById('saveBillBtn');
+  if (saveBtn) saveBtn.textContent = 'திருத்தங்களை சேமி & காண்பி';
+
+  const cancelBtn = document.getElementById('cancelEditBillBtn');
+  if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+  billCustomerCombo.setValue(b.customerId, b.customerName);
+  document.getElementById('billDate').value = b.dateISO;
+  document.getElementById('billKooliInput').value = b.kooli ? b.kooli : '';
+
+  clearBillItemRows();
+  if (b.items && b.items.length) {
+    b.items.forEach(it => addBillRow(it));
+  } else {
+    addBillRow();
+  }
+
+  updatePrevBalanceDisplay();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelBillEdit() {
+  editingBillId = null;
+  const titleEl = document.getElementById('newBillTitle');
+  if (titleEl) titleEl.textContent = 'புதிய பில்';
+
+  const saveBtn = document.getElementById('saveBillBtn');
+  if (saveBtn) saveBtn.textContent = 'பில் சேமி & காண்பி';
+
+  const cancelBtn = document.getElementById('cancelEditBillBtn');
+  if (cancelBtn) cancelBtn.classList.add('hidden');
+
   clearBillItemRows();
   billCustomerCombo.setValue('', '');
+  document.getElementById('billDate').value = todayISO();
   document.getElementById('billKooliInput').value = '';
   addBillRow();
   updatePrevBalanceDisplay();
+}
+
+const cancelEditBtn = document.getElementById('cancelEditBillBtn');
+if (cancelEditBtn) {
+  cancelEditBtn.addEventListener('click', cancelBillEdit);
+}
+
+document.getElementById('clearBillBtn').addEventListener('click', () => {
+  if (!confirm('இந்த பில்லை அழிக்கவா?')) return;
+  cancelBillEdit();
 });
 
 document.getElementById('saveBillBtn').addEventListener('click', saveBill);
@@ -488,20 +567,17 @@ async function saveBill() {
   const prevBalance = customerCurrentBalance(cust);
   const grandTotal = round2(total + prevBalance);
   const now = new Date();
-  const dateISO = todayISO();
-  // Any payment already recorded for this customer earlier today (e.g. cash
-  // handed over along with picking up the goods) — captured as a snapshot
-  // on the bill itself, the way a printed paper receipt would show it at
-  // that moment. Payments recorded later the same day won't retroactively
-  // change a bill that's already been printed/shared.
+  const dateISO = document.getElementById('billDate').value || todayISO();
   const paidToday = customerPaymentsOn(cust.id, dateISO).reduce((s, p) => s + p.amount, 0);
 
+  const existingBill = editingBillId ? bills.find(x => x.id === editingBillId) : null;
+
   const bill = {
-    id: uid('bill_'),
-    billNo: shop.nextBillNo,
+    id: editingBillId || uid('bill_'),
+    billNo: existingBill ? existingBill.billNo : shop.nextBillNo,
     dateISO,
-    timeDisplay: formatTimeDisplay(now),
-    createdAt: now.getTime(),
+    timeDisplay: existingBill ? existingBill.timeDisplay : formatTimeDisplay(now),
+    createdAt: existingBill ? existingBill.createdAt : now.getTime(),
     customerId: cust.id,
     customerName: cust.name,
     customerPhone: cust.phone || '',
@@ -516,19 +592,24 @@ async function saveBill() {
   const saveBtn = document.getElementById('saveBillBtn');
   saveBtn.disabled = true;
   try {
-    await DB.insertBill(bill);
-    bills.push(bill);
+    await DB.insertBill(bill); // uses upsert under the hood
 
-    shop.nextBillNo = shop.nextBillNo + 1;
-    await DB.saveShop(shop);
+    if (editingBillId) {
+      const idx = bills.findIndex(x => x.id === editingBillId);
+      if (idx !== -1) bills[idx] = bill;
+    } else {
+      bills.push(bill);
+      shop.nextBillNo = shop.nextBillNo + 1;
+      await DB.saveShop(shop);
+    }
 
-    // Reset form
-    clearBillItemRows();
-    billCustomerCombo.setValue('', '');
-    document.getElementById('billKooliInput').value = '';
-    addBillRow();
-    updatePrevBalanceDisplay();
-    populateCustomerSelect();
+    cancelBillEdit();
+
+    // Refresh UI
+    renderDashboard();
+    if (document.getElementById('tab-reports').classList.contains('active')) runReport();
+    if (document.getElementById('tab-ledger').classList.contains('active')) renderLedgerTab();
+    if (document.getElementById('tab-customers').classList.contains('active')) renderCustomersTab();
 
     openPrintModal(bill);
   } catch (err) {
@@ -1224,6 +1305,7 @@ function runReport() {
       <td>${money(b.grandTotal)}</td>
       <td>
         <button class="btn btn-ghost view-bill-btn" data-id="${b.id}">காண்க</button>
+        <button class="btn btn-ghost edit-bill-btn" data-id="${b.id}" title="பில் திருத்து">✏️ திருத்து</button>
         <button class="btn btn-ghost btn-danger-text bill-del-btn" data-id="${b.id}" title="பில் நீக்கு">🗑</button>
       </td>
     `;
@@ -1231,6 +1313,9 @@ function runReport() {
   });
   tbody.querySelectorAll('.view-bill-btn').forEach(btn => {
     btn.addEventListener('click', () => openPrintModal(bills.find(b => b.id === btn.dataset.id)));
+  });
+  tbody.querySelectorAll('.edit-bill-btn').forEach(btn => {
+    btn.addEventListener('click', () => editBillById(btn.dataset.id));
   });
   tbody.querySelectorAll('.bill-del-btn').forEach(btn => {
     btn.addEventListener('click', () => deleteBillById(btn.dataset.id, btn));
@@ -1417,12 +1502,22 @@ document.getElementById('deleteBillFromModalBtn').addEventListener('click', asyn
   const id = currentPrintBill.id;
   const btn = document.getElementById('deleteBillFromModalBtn');
   await deleteBillById(id, btn);
-  // If it actually got deleted (bill no longer in the array), close the modal.
   if (!bills.find(b => b.id === id)) {
     closeModal(printModal);
     currentPrintBill = null;
   }
 });
+
+const editModalBtn = document.getElementById('editBillFromModalBtn');
+if (editModalBtn) {
+  editModalBtn.addEventListener('click', () => {
+    if (!currentPrintBill) return;
+    const id = currentPrintBill.id;
+    closeModal(printModal);
+    currentPrintBill = null;
+    editBillById(id);
+  });
+}
 
 function buildReceiptHTML(b) {
   const itemRows = b.items.map(it => `
